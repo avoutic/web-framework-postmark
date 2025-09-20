@@ -14,9 +14,9 @@ namespace WebFramework\Postmark;
 use GuzzleHttp\Exception\ConnectException;
 use Postmark\Models\PostmarkException;
 use Postmark\PostmarkClient;
-use WebFramework\Core\Instrumentation;
-use WebFramework\Core\MailService;
 use WebFramework\Core\RuntimeEnvironment;
+use WebFramework\Diagnostics\Instrumentation;
+use WebFramework\Mail\MailService;
 
 /**
  * Class PostmarkMailService.

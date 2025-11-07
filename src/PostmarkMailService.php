@@ -16,6 +16,7 @@ use Postmark\Models\PostmarkException;
 use Postmark\PostmarkClient;
 use WebFramework\Core\RuntimeEnvironment;
 use WebFramework\Diagnostics\Instrumentation;
+use WebFramework\Mail\MailBackend;
 use WebFramework\Mail\MailService;
 
 /**
@@ -23,7 +24,7 @@ use WebFramework\Mail\MailService;
  *
  * Implements the MailService interface using the Postmark email service.
  */
-class PostmarkMailService implements MailService
+class PostmarkMailService implements MailService, MailBackend
 {
     /**
      * PostmarkMailService constructor.

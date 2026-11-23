@@ -16,6 +16,7 @@ use Postmark\Models\PostmarkException;
 use Postmark\PostmarkClient;
 use WebFramework\Core\RuntimeEnvironment;
 use WebFramework\Diagnostics\Instrumentation;
+use WebFramework\Exception\MailException;
 use WebFramework\Mail\MailBackend;
 use WebFramework\Mail\MailService;
 
@@ -26,6 +27,9 @@ use WebFramework\Mail\MailService;
  */
 class PostmarkMailService implements MailService, MailBackend
 {
+    private const ERROR_INACTIVE_RECIPIENT = 406;
+    private const ERROR_INVALID_TEMPLATE = 1101;
+
     /**
      * PostmarkMailService constructor.
      *
@@ -59,8 +63,8 @@ class PostmarkMailService implements MailService, MailBackend
      *
      * @return bool|string True if sent successfully, or an error message string
      *
-     * @throws \RuntimeException  If no recipient or sender email is specified, or the connection to Postmark fails
-     * @throws PostmarkException If Postmark reports an error other than an inactive recipient
+     * @throws \RuntimeException If no recipient or sender email is specified
+     * @throws MailException     If the connection to Postmark fails or Postmark reports an error
      */
     public function sendRawMail(?string $from, string $to, string $subject, string $message): bool|string
     {
@@ -97,8 +101,8 @@ class PostmarkMailService implements MailService, MailBackend
      *
      * @return bool|string True if sent successfully, or an error message string
      *
-     * @throws \RuntimeException  If no recipient or sender email is specified, or the connection to Postmark fails
-     * @throws PostmarkException If Postmark reports an error other than an inactive recipient
+     * @throws \RuntimeException If no recipient or sender email is specified
+     * @throws MailException     If the connection to Postmark fails or Postmark reports an error
      */
     public function sendTemplateMail(string $templateId, ?string $from, string $to, array $templateVariables): bool|string
     {
@@ -135,11 +139,11 @@ class PostmarkMailService implements MailService, MailBackend
                 );
             });
         }
-        catch (PostmarkException $e)
+        catch (MailException $e)
         {
-            if ($e->PostmarkApiErrorCode == 1101)
+            if ($e->getErrorCode() === self::ERROR_INVALID_TEMPLATE)
             {
-                throw new \RuntimeException("Template ID {$templateId} not correct", previous: $e);
+                throw new MailException("Template ID {$templateId} not correct", $e->getErrorCode(), $e->getPrevious());
             }
 
             throw $e;
@@ -152,10 +156,9 @@ class PostmarkMailService implements MailService, MailBackend
      * @param string         $spanOperation The operation name for the instrumentation span
      * @param callable():void $send          The call that sends the mail
      *
-     * @return bool|string True if sent successfully, or 'inactive_address' if the recipient is inactive
+     * @return bool|string True if sent successfully, or MailBackend::INACTIVE_ADDRESS if the recipient is inactive
      *
-     * @throws \RuntimeException  If the connection to Postmark fails
-     * @throws PostmarkException If Postmark reports another error
+     * @throws MailException If the connection to Postmark fails or Postmark reports another error
      */
     private function send(string $spanOperation, callable $send): bool|string
     {
@@ -167,18 +170,20 @@ class PostmarkMailService implements MailService, MailBackend
         }
         catch (ConnectException $e)
         {
-            throw new \RuntimeException('Postmark Connection failure', previous: $e);
+            throw new MailException('Postmark Connection failure', null, $e);
         }
         catch (PostmarkException $e)
         {
+            $errorCode = is_numeric($e->PostmarkApiErrorCode) ? (int) $e->PostmarkApiErrorCode : null;
+
             // Postmark refuses to send to an inactive recipient (bounced or marked as spam)
             //
-            if ($e->PostmarkApiErrorCode == 406)
+            if ($errorCode === self::ERROR_INACTIVE_RECIPIENT)
             {
-                return 'inactive_address';
+                return MailBackend::INACTIVE_ADDRESS;
             }
 
-            throw $e;
+            throw new MailException('Postmark error: '.$e->message, $errorCode, $e);
         }
         finally
         {

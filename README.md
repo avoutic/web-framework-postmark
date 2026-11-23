@@ -91,7 +91,7 @@ This client uses the same API key and is not cached.
 
 * `sendRawMail()` now uses the given sender. Before, it always sent from the default sender, whatever was passed as `$from`. Callers that pass a `$from` now really send from that address, so it must be a sender that is verified in your Postmark account. Pass `null` to use the default sender.
 * `sendRawMail()` now returns `'inactive_address'` when Postmark refuses an inactive recipient (error 406), as `sendTemplateMail()` already did. Before, it threw a `PostmarkException`.
-* `sendTemplateMail()` now throws a `\RuntimeException` when the connection to Postmark fails, as `sendRawMail()` already did. Before, the Guzzle `ConnectException` was thrown.
+* Failures are now reported as a `WebFramework\Exception\MailException` (a `\RuntimeException`), so callers do not depend on Postmark's classes. `getErrorCode()` gives the Postmark API error code and `getPrevious()` the original exception. This covers a failed connection (before: a `\RuntimeException` for raw mail and the Guzzle `ConnectException` for template mail), a wrong template id (before: a `\RuntimeException`) and every other Postmark error, such as an invalid API token (before: a `PostmarkException`). Code that catches `PostmarkException` or `ConnectException` around these calls must catch `MailException` instead.
 
 ## License
 

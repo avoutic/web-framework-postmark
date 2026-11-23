@@ -59,6 +59,34 @@ If you are using the definition from _definitions/defitinions.php_. You can just
 return 'your-api-key-here';
 ```
 
+### Timeout
+
+The Postmark client used for sending mail has a timeout of 5 seconds. To change it, construct the `PostmarkClientFactory` with another timeout in your own definition:
+
+```php
+<?php
+
+use Psr\Container\ContainerInterface;
+use WebFramework\Postmark\PostmarkClientFactory;
+use WebFramework\Security\ConfigService;
+
+return [
+    PostmarkClientFactory::class => DI\factory(function (ContainerInterface $c) {
+        $apiKey = $c->get(ConfigService::class)->getAuthConfig('postmark');
+
+        return new PostmarkClientFactory($apiKey, timeout: 10);
+    }),
+];
+```
+
+For a single call that needs more time, such as exporting suppressions, ask the factory for a separate client:
+
+```php
+$client = $postmarkClientFactory->createClient(30);
+```
+
+This client uses the same API key and is not cached.
+
 ## License
 
 MIT License - see LICENSE file for details 

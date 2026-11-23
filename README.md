@@ -87,6 +87,12 @@ $client = $postmarkClientFactory->createClient(30);
 
 This client uses the same API key and is not cached.
 
+## Upgrading to WebFramework 12
+
+* `sendRawMail()` now uses the given sender. Before, it always sent from the default sender, whatever was passed as `$from`. Callers that pass a `$from` now really send from that address, so it must be a sender that is verified in your Postmark account. Pass `null` to use the default sender.
+* `sendRawMail()` now returns `'inactive_address'` when Postmark refuses an inactive recipient (error 406), as `sendTemplateMail()` already did. Before, it threw a `PostmarkException`.
+* `sendTemplateMail()` now throws a `\RuntimeException` when the connection to Postmark fails, as `sendRawMail()` already did. Before, the Guzzle `ConnectException` was thrown.
+
 ## License
 
 MIT License - see LICENSE file for details 

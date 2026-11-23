@@ -59,11 +59,12 @@ class PostmarkMailService implements MailService, MailBackend
      *
      * @return bool|string True if sent successfully, or an error message string
      *
-     * @throws \RuntimeException If no recipient or sender email is specified
+     * @throws \RuntimeException  If no recipient or sender email is specified, or the connection to Postmark fails
+     * @throws PostmarkException If Postmark reports an error other than an inactive recipient
      */
     public function sendRawMail(?string $from, string $to, string $subject, string $message): bool|string
     {
-        $from = $this->defaultSender;
+        $from = $from ?? $this->defaultSender;
 
         if (!strlen($to))
         {
@@ -75,24 +76,15 @@ class PostmarkMailService implements MailService, MailBackend
             throw new \RuntimeException('No source e-mail specified');
         }
 
-        try
-        {
-            $span = $this->instrumentation->startSpan('mail.send_raw');
-            $result = $this->getClient()->sendEmail(
+        return $this->send('mail.send_raw', function () use ($from, $to, $subject, $message): void {
+            $this->getClient()->sendEmail(
                 $from,
                 $to,
                 $subject,
                 null,
                 $message
             );
-            $this->instrumentation->finishSpan($span);
-        }
-        catch (ConnectException $e)
-        {
-            throw new \RuntimeException('Postmark Connection failure', previous: $e);
-        }
-
-        return true;
+        });
     }
 
     /**
@@ -105,7 +97,8 @@ class PostmarkMailService implements MailService, MailBackend
      *
      * @return bool|string True if sent successfully, or an error message string
      *
-     * @throws \RuntimeException If no recipient or sender email is specified
+     * @throws \RuntimeException  If no recipient or sender email is specified, or the connection to Postmark fails
+     * @throws PostmarkException If Postmark reports an error other than an inactive recipient
      */
     public function sendTemplateMail(string $templateId, ?string $from, string $to, array $templateVariables): bool|string
     {
@@ -129,32 +122,67 @@ class PostmarkMailService implements MailService, MailBackend
 
         try
         {
-            $span = $this->instrumentation->startSpan('mail.send_template');
-            $result = $this->getClient()->sendEmailWithTemplate(
-                $from,
-                $to,
-                $templateId,
-                $templateVariables,
-                true,               // inlineCSS
-                null,               // tag
-                true,               // trackOpens
-                $replyTo           // replyTo
-            );
-            $this->instrumentation->finishSpan($span);
+            return $this->send('mail.send_template', function () use ($from, $to, $templateId, $templateVariables, $replyTo): void {
+                $this->getClient()->sendEmailWithTemplate(
+                    $from,
+                    $to,
+                    $templateId,
+                    $templateVariables,
+                    true,               // inlineCSS
+                    null,               // tag
+                    true,               // trackOpens
+                    $replyTo           // replyTo
+                );
+            });
         }
         catch (PostmarkException $e)
         {
+            if ($e->PostmarkApiErrorCode == 1101)
+            {
+                throw new \RuntimeException("Template ID {$templateId} not correct", previous: $e);
+            }
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Run a send call with the error handling shared by raw and template mail.
+     *
+     * @param string         $spanOperation The operation name for the instrumentation span
+     * @param callable():void $send          The call that sends the mail
+     *
+     * @return bool|string True if sent successfully, or 'inactive_address' if the recipient is inactive
+     *
+     * @throws \RuntimeException  If the connection to Postmark fails
+     * @throws PostmarkException If Postmark reports another error
+     */
+    private function send(string $spanOperation, callable $send): bool|string
+    {
+        $span = $this->instrumentation->startSpan($spanOperation);
+
+        try
+        {
+            $send();
+        }
+        catch (ConnectException $e)
+        {
+            throw new \RuntimeException('Postmark Connection failure', previous: $e);
+        }
+        catch (PostmarkException $e)
+        {
+            // Postmark refuses to send to an inactive recipient (bounced or marked as spam)
+            //
             if ($e->PostmarkApiErrorCode == 406)
             {
                 return 'inactive_address';
             }
 
-            if ($e->PostmarkApiErrorCode == 1101)
-            {
-                throw new \RuntimeException("Template ID {$templateId} not correct");
-            }
-
             throw $e;
+        }
+        finally
+        {
+            $this->instrumentation->finishSpan($span);
         }
 
         return true;

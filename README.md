@@ -13,7 +13,7 @@ This module provides Postmark email service integration for WebFramework.
 ## Requirements
 
 - PHP 8.2 or higher
-- Web Framework 8.x
+- WebFramework core package (^12)
 - Postmark API key
 
 ## Installation
